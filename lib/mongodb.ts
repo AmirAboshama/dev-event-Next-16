@@ -9,9 +9,12 @@ import mongoose, { Mongoose } from 'mongoose';
  */
 const MONGODB_URI = process.env.MONGODB_URI;
 
+// ⚠️ IMPORTANT:
+// Do NOT throw here. This file may be imported in env-less contexts (build, edge, etc.)
 if (!MONGODB_URI) {
-  // Failing fast here makes configuration issues obvious during startup
-  throw new Error('Please define the MONGODB_URI environment variable');
+  console.warn(
+    '⚠️ MONGODB_URI is not defined. Database connection will fail when connectToDatabase() is called.'
+  );
 }
 
 /**
@@ -28,17 +31,14 @@ interface MongooseCache {
 
 /**
  * Augment the Node.js global type so TypeScript knows about our cache.
- *
- * We intentionally use `var` on `globalThis` so that the value persists
- * across module reloads in development.
  */
 declare global {
   // eslint-disable-next-line no-var
   var _mongooseCache: MongooseCache | undefined;
 }
 
-// Initialize the cache on first import. Subsequent imports will reuse this.
-const globalCache = globalThis._mongooseCache ?? {
+// Initialize cache (persisted across hot reloads)
+const globalCache: MongooseCache = globalThis._mongooseCache ?? {
   conn: null,
   promise: null,
 };
@@ -50,24 +50,25 @@ if (!globalThis._mongooseCache) {
 /**
  * Get a singleton Mongoose connection.
  *
- * This function:
- * - Returns an existing connection if one is already established
- * - Otherwise, creates a new connection and caches both the connection
- *   and the in-flight connection promise
+ * - Safe to import in any environment
+ * - Fails fast ONLY when a real connection is attempted
  */
 export async function connectToDatabase(): Promise<Mongoose> {
-  // If we already have an active connection, reuse it.
+  // ✅ Reuse existing connection
   if (globalCache.conn) {
     return globalCache.conn;
   }
 
-  // If a connection is already being established, await that promise.
+  // ✅ Validate env var at call-time (not import-time)
+  if (!MONGODB_URI) {
+    throw new Error('Please define the MONGODB_URI environment variable');
+  }
+
+  // ✅ Reuse in-flight connection promise
   if (!globalCache.promise) {
     globalCache.promise = mongoose
       .connect(MONGODB_URI, {
-        // Recommended options for modern Mongoose + MongoDB drivers
         autoIndex: process.env.NODE_ENV === 'development',
-        // Disables mongoose buffering; lets you handle connection errors explicitly
         bufferCommands: false,
       })
       .then((mongooseInstance) => mongooseInstance);
@@ -76,7 +77,7 @@ export async function connectToDatabase(): Promise<Mongoose> {
   try {
     globalCache.conn = await globalCache.promise;
   } catch (error) {
-    // If connection fails, reset the promise so future calls can retry
+    // Reset promise so future calls can retry
     globalCache.promise = null;
     throw error;
   }
