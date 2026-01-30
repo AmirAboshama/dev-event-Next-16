@@ -11,11 +11,12 @@ const Navbar = () => {
        <p> DevEvent</p>
        
         </Link>
-        <ul>
-            <Link href="/">home</Link>
-            <Link href="/">events</Link>
-            <Link href="/">create event</Link>
-        </ul>
+       <ul>
+  <li><Link href="/">Home</Link></li>
+  <li><Link href="/events">Events</Link></li>
+  <li><Link href="/events/create">Create Event</Link></li>
+</ul>
+
       </nav>
     </header>
   )
